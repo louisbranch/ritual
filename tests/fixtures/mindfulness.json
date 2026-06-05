@@ -1,0 +1,8 @@
+{
+  "name": "Mindfulness",
+  "description": "Sit down meditation.",
+  "start": "06:30",
+  "end": "06:45",
+  "repeat": "daily",
+  "steps": [] 
+}

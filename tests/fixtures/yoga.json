@@ -1,0 +1,8 @@
+{
+  "name": "Nightly Yoga",
+  "description": "Wind-down activity before bed.",
+  "start": "21:00",
+  "end": "21:25",
+  "repeat": "daily",
+  "steps": [] 
+}
