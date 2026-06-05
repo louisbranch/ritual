@@ -1,5 +1,6 @@
 package ritual
 
+import "base:runtime"
 import "core:strconv"
 import "core:time"
 import "core:time/datetime"
@@ -36,19 +37,22 @@ parse_time :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
 // local_date returns the calendar date at instant `t` in the system's local
 // timezone. Pass time.now() to get today.
 //
+// The returned date is a plain value; `scratch` is used only to load the tz
+// region during the call and may be reclaimed as soon as this returns.
+//
 // `ok` is false when the local zone can't be resolved (e.g. no tzdata); the
 // returned date then falls back to UTC, which is also what you get when the
 // machine's local zone simply is UTC.
 local_date :: proc(
 	t: time.Time,
-	allocator := context.allocator,
+	scratch: runtime.Allocator,
 ) -> (date: datetime.Date, ok: bool) #optional_ok {
 	dt := time.time_to_datetime(t) or_return
 
 	// "local" resolves to /etc/localtime; a nil region means UTC, which
 	// datetime_to_tz passes through unchanged.
-	region := timezone.region_load("local", allocator) or_return
-	defer timezone.region_destroy(region, allocator)
+	region := timezone.region_load("local", scratch) or_return
+	defer timezone.region_destroy(region, scratch)
 
 	local := timezone.datetime_to_tz(dt, region) or_return
 	return local.date, true

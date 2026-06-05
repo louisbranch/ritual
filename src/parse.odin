@@ -1,8 +1,10 @@
 package ritual
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:os"
 import "core:slice"
+import "core:strings"
 
 // Load_Error is anything that can go wrong while loading rituals from disk: an
 // OS error reading the directory or a file, or a Parse_Error decoding one.
@@ -12,21 +14,23 @@ Load_Error :: union {
 }
 
 // load_rituals_from_dir reads every file in dir_path and decodes each as a
-// ritual JSON document. The returned slice and all ritual memory are owned by
-// `allocator`.
+// ritual JSON document. The rituals are cloned into `allocator`; the directory
+// listing and raw file bytes are read into `scratch`, which the caller may
+// reclaim as soon as this returns.
 load_rituals_from_dir :: proc(
 	dir_path: string,
-	allocator := context.allocator,
+	allocator: runtime.Allocator,
+	scratch: runtime.Allocator,
 ) -> (
 	rituals: [dynamic]Ritual,
 	err: Load_Error,
 ) {
 	rituals = make([dynamic]Ritual, allocator)
 
-	files := os.read_all_directory_by_path(dir_path, allocator) or_return
+	files := os.read_all_directory_by_path(dir_path, scratch) or_return
 	for f in files {
-		data := os.read_entire_file_from_path(f.fullpath, allocator) or_return
-		r := unmarshal_ritual(data, allocator) or_return
+		data := os.read_entire_file_from_path(f.fullpath, scratch) or_return
+		r := unmarshal_ritual(data, allocator, scratch) or_return
 		append(&rituals, r)
 	}
 	slice.sort_by(rituals[:], proc(a, b: Ritual) -> bool {return a.start < b.start})
@@ -45,29 +49,37 @@ Ritual_Raw :: struct {
 	steps:       [dynamic]string,
 }
 
-// unmarshal_ritual decodes a ritual JSON document into a Ritual. The decoded
-// strings, slices and map memory are owned by `allocator`.
+// unmarshal_ritual decodes a ritual JSON document into a Ritual. The JSON is
+// parsed into `scratch` (the raw strings, the duration fields and the repeat
+// Value tree); only the keeper fields are cloned into `allocator`, so the
+// caller may reclaim `scratch` as soon as this returns. The result does not
+// alias `data`.
 unmarshal_ritual :: proc(
 	data: []byte,
-	allocator := context.allocator,
+	allocator: runtime.Allocator,
+	scratch: runtime.Allocator,
 ) -> (
 	r: Ritual,
 	err: Parse_Error,
 ) {
 	raw: Ritual_Raw
-	if json.unmarshal(data, &raw, allocator = allocator) != nil {
+	if json.unmarshal(data, &raw, allocator = scratch) != nil {
 		// Collapses json's richer Unmarshal_Error into the domain enum; parse
 		// against ritual.schema.json first if you need precise JSON diagnostics.
 		return {}, .Invalid_Format
 	}
 
-	r.name = raw.name
-	r.description = raw.description
-	r.steps = raw.steps
+	// Validate before cloning so a rejected ritual touches `allocator` not at all.
 	r.start = parse_time(raw.start) or_return
 	r.end = parse_time(raw.end) or_return
 	if r.end <= r.start do return {}, .End_Before_Start
 	r.repeat = parse_repeat(raw.repeat) or_return
+
+	// The remaining fields live in `scratch`; clone them into `allocator`.
+	r.name = strings.clone(raw.name, allocator)
+	r.description = strings.clone(raw.description, allocator)
+	r.steps = make([dynamic]string, len(raw.steps), allocator)
+	for s, i in raw.steps do r.steps[i] = strings.clone(s, allocator)
 	return
 }
 
@@ -88,20 +100,23 @@ parse_repeat :: proc(v: json.Value) -> (rep: Repeat, err: Parse_Error) {
 			rep += {wd}
 		}
 		return rep, .None
-	}
 
-	return {}, .Invalid_Format
+	case:
+		return {}, .Invalid_Format
+	}
 }
 
 // parse_weekday parses a weekday name in 2-letter, 3-letter, or full form
 // (case-insensitive), matching ritual.schema.json's `weekday` definition.
 parse_weekday :: proc(s: string) -> (wd: Weekday, err: Parse_Error) {
+	max :: 9 // len("wednesday")
+
 	if len(s) == 0 do return {}, .Empty
-	if len(s) > 9 do return {}, .Invalid_Format // longest accepted form is "wednesday"
+	if len(s) > max do return {}, .Invalid_Format
 
 	// ASCII-lowercase into a stack buffer: the result is pure scratch for the
 	// match below, so there's no reason to touch any allocator.
-	buf: [9]u8
+	buf: [max]byte
 	for i in 0 ..< len(s) {
 		c := s[i]
 		if 'A' <= c && c <= 'Z' do c += 'a' - 'A'

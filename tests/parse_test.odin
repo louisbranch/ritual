@@ -8,6 +8,74 @@ import "core:time"
 import ritual "../src"
 
 @(test)
+test_parse_weekday :: proc(t: ^testing.T) {
+	Case :: struct {
+		input:   string,
+		want_wd: ritual.Weekday,
+		want_err: ritual.Parse_Error,
+	}
+
+	cases := []Case{
+		// 2-letter, 3-letter, and full forms for each day.
+		{"su", .Sunday, .None},
+		{"sun", .Sunday, .None},
+		{"sunday", .Sunday, .None},
+		{"mo", .Monday, .None},
+		{"mon", .Monday, .None},
+		{"monday", .Monday, .None},
+		{"tu", .Tuesday, .None},
+		{"tue", .Tuesday, .None},
+		{"tuesday", .Tuesday, .None},
+		{"we", .Wednesday, .None},
+		{"wed", .Wednesday, .None},
+		{"wednesday", .Wednesday, .None},
+		{"th", .Thursday, .None},
+		{"thu", .Thursday, .None},
+		{"thursday", .Thursday, .None},
+		{"fr", .Friday, .None},
+		{"fri", .Friday, .None},
+		{"friday", .Friday, .None},
+		{"sa", .Saturday, .None},
+		{"sat", .Saturday, .None},
+		{"saturday", .Saturday, .None},
+
+		// Case-insensitive matching.
+		{"MON", .Monday, .None},
+		{"Friday", .Friday, .None},
+		{"WeDnEsDaY", .Wednesday, .None},
+
+		// Errors.
+		{"", {}, .Empty},
+		{"x", {}, .Invalid_Format},
+		{"mond", {}, .Invalid_Format},
+		{"sundays", {}, .Invalid_Format},
+		{"wednesdays", {}, .Invalid_Format}, // 10 chars, over the length cap
+		{"funday", {}, .Invalid_Format},
+		{" mon", {}, .Invalid_Format},
+	}
+
+	for c in cases {
+		wd, err := ritual.parse_weekday(c.input)
+		testing.expectf(
+			t,
+			err == c.want_err,
+			"parse_weekday(%q) error = %v, want %v",
+			c.input,
+			err,
+			c.want_err,
+		)
+		testing.expectf(
+			t,
+			wd == c.want_wd,
+			"parse_weekday(%q) = %v, want %v",
+			c.input,
+			wd,
+			c.want_wd,
+		)
+	}
+}
+
+@(test)
 test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
 	context.allocator = context.temp_allocator
 	defer free_all(context.temp_allocator)
@@ -21,7 +89,7 @@ test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
 		"steps": ["stretch", "coffee"]
 	}`
 
-	r, err := ritual.unmarshal_ritual(transmute([]byte)doc)
+	r, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, r.name, "Morning")
 	testing.expect_value(t, r.start, ritual.Time_Of_Day(6 * time.Hour + 30 * time.Minute))
@@ -44,7 +112,7 @@ test_unmarshal_ritual_daily :: proc(t: ^testing.T) {
 		"steps": ["go"]
 	}`
 
-	r, err := ritual.unmarshal_ritual(transmute([]byte)doc)
+	r, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, r.repeat, ritual.EVERY_DAY)
 }
@@ -68,7 +136,7 @@ test_unmarshal_ritual_end_before_start :: proc(t: ^testing.T) {
 			end,
 		)
 
-		_, err := ritual.unmarshal_ritual(transmute([]byte)doc)
+		_, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 		testing.expect_value(t, err, ritual.Parse_Error.End_Before_Start)
 	}
 }
@@ -82,7 +150,7 @@ test_load_rituals_from_dir :: proc(t: ^testing.T) {
 	dir, join_err := os.join_path({#directory, "fixtures"}, context.temp_allocator)
 	testing.expect_value(t, join_err, nil)
 
-	rituals, err := ritual.load_rituals_from_dir(dir)
+	rituals, err := ritual.load_rituals_from_dir(dir, context.temp_allocator, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, len(rituals), 2)
 
