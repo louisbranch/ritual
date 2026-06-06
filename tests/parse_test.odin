@@ -89,7 +89,7 @@ test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
 		"steps": ["stretch", "coffee"]
 	}`
 
-	r, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
+	r, _, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, r.name, "Morning")
 	testing.expect_value(t, r.start, ritual.Time_Of_Day(6 * time.Hour + 30 * time.Minute))
@@ -112,7 +112,7 @@ test_unmarshal_ritual_daily :: proc(t: ^testing.T) {
 		"steps": ["go"]
 	}`
 
-	r, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
+	r, _, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, r.repeat, ritual.EVERY_DAY)
 }
@@ -136,9 +136,27 @@ test_unmarshal_ritual_end_before_start :: proc(t: ^testing.T) {
 			end,
 		)
 
-		_, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
+		_, field, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
 		testing.expect_value(t, err, ritual.Parse_Error.End_Before_Start)
+		testing.expect_value(t, field, ritual.Ritual_Field.End)
 	}
+}
+
+@(test)
+test_load_error_to_string :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	defer free_all(context.temp_allocator)
+
+	e := ritual.Load_Error {
+		file  = "rituals/work.json",
+		field = .End,
+		cause = ritual.Parse_Error.Out_Of_Range,
+	}
+	testing.expect_value(
+		t,
+		ritual.load_error_to_string(e, context.temp_allocator),
+		"rituals/work.json: End field: Out_Of_Range",
+	)
 }
 
 @(test)
@@ -151,7 +169,7 @@ test_load_rituals_from_dir :: proc(t: ^testing.T) {
 	testing.expect_value(t, join_err, nil)
 
 	rituals, err := ritual.load_rituals_from_dir(dir, context.temp_allocator, context.temp_allocator)
-	testing.expect_value(t, err, nil)
+	testing.expect_value(t, err.cause, nil)
 	testing.expect_value(t, len(rituals), 2)
 
 	// Directory order is filesystem-dependent, so index by name.

@@ -2,15 +2,45 @@ package ritual
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
 
-// Load_Error is anything that can go wrong while loading rituals from disk: an
-// OS error reading the directory or a file, or a Parse_Error decoding one.
-Load_Error :: union {
-	os.Error,
-	Parse_Error,
+// Ritual_Field names the document field an error is about, so a failed load can
+// report which field of which file was rejected and why.
+Ritual_Field :: enum {
+	None,
+	Format, // the document as a whole failed to decode
+	Start,
+	End,
+	Repeat,
+}
+
+// Load_Error locates a failure while loading rituals: `cause` is the underlying
+// OS or parse error, `file` the document it came from (empty for the directory
+// read itself), and `field` the offending field (None for non-parse errors). A
+// zero Load_Error — in particular a nil `cause` — means success.
+Load_Error :: struct {
+	file:  string,
+	field: Ritual_Field,
+	cause: union {
+		os.Error,
+		Parse_Error,
+	},
+}
+
+// load_error_to_string renders a Load_Error as a single human-readable line,
+// e.g. `rituals/work.json: End field: Out_Of_Range`. Allocates into `allocator`.
+load_error_to_string :: proc(e: Load_Error, allocator := context.allocator) -> string {
+	switch c in e.cause {
+	case Parse_Error:
+		return fmt.aprintf("%s: %v field: %v", e.file, e.field, c, allocator = allocator)
+	case os.Error:
+		if e.file != "" do return fmt.aprintf("%s: %v", e.file, c, allocator = allocator)
+		return fmt.aprintf("%v", c, allocator = allocator)
+	}
+	return strings.clone("no error", allocator)
 }
 
 // load_rituals_from_dir reads every file in dir_path and decodes each as a
@@ -27,10 +57,18 @@ load_rituals_from_dir :: proc(
 ) {
 	rituals = make([dynamic]Ritual, allocator)
 
-	files := os.read_all_directory_by_path(dir_path, scratch) or_return
+	files, dir_err := os.read_all_directory_by_path(dir_path, scratch)
+	if dir_err != nil do return rituals, Load_Error{cause = dir_err}
+
 	for f in files {
-		data := os.read_entire_file_from_path(f.fullpath, scratch) or_return
-		r := unmarshal_ritual(data, allocator, scratch) or_return
+		data, read_err := os.read_entire_file_from_path(f.fullpath, scratch)
+		if read_err != nil do return rituals, Load_Error{file = f.name, cause = read_err}
+
+		r, field, parse_err := unmarshal_ritual(data, allocator, scratch)
+		if parse_err != .None {
+			return rituals, Load_Error{file = f.name, field = field, cause = parse_err}
+		}
+
 		append(&rituals, r)
 	}
 	slice.sort_by(rituals[:], proc(a, b: Ritual) -> bool {return a.start < b.start})
@@ -60,20 +98,24 @@ unmarshal_ritual :: proc(
 	scratch: runtime.Allocator,
 ) -> (
 	r: Ritual,
+	field: Ritual_Field,
 	err: Parse_Error,
 ) {
 	raw: Ritual_Raw
+	field = .Format
 	if json.unmarshal(data, &raw, allocator = scratch) != nil {
 		// Collapses json's richer Unmarshal_Error into the domain enum; parse
 		// against ritual.schema.json first if you need precise JSON diagnostics.
-		return {}, .Invalid_Format
+		return {}, field, .Invalid_Format
 	}
 
 	// Validate before cloning so a rejected ritual touches `allocator` not at all.
-	r.start = parse_time(raw.start) or_return
-	r.end = parse_time(raw.end) or_return
-	if r.end <= r.start do return {}, .End_Before_Start
-	r.repeat = parse_repeat(raw.repeat) or_return
+	// `field` is set before each step so or_return carries the offending field out
+	// alongside the error.
+	field = .Start; r.start = parse_time(raw.start) or_return
+	field = .End; r.end = parse_time(raw.end) or_return
+	if r.end <= r.start do return {}, field, .End_Before_Start
+	field = .Repeat; r.repeat = parse_repeat(raw.repeat) or_return
 
 	// The remaining fields live in `scratch`; clone them into `allocator`.
 	r.name = strings.clone(raw.name, allocator)

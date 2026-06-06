@@ -38,13 +38,17 @@ main :: proc() {
 
 	dir_path, join_err := os.join_path({data_path, APP_NAME}, scratch_alloc)
 	if join_err != nil {
-		log.fatalf("failed to join data path %q/%s: %v", data_path, APP_NAME, join_err)
+		log.fatalf("failed to join data path %s/%s: %v", data_path, APP_NAME, join_err)
 		os.exit(1)
 	}
 
 	rituals, load_err := load_rituals_from_dir(dir_path, allocator, scratch_alloc)
-	if load_err != nil {
-		log.fatalf("failed to load rituals from %q: %v", dir_path, load_err)
+	if load_err.cause != nil {
+		log.fatalf(
+			"failed to load rituals from %s: %s",
+			dir_path,
+			load_error_to_string(load_err, scratch_alloc),
+		)
 		os.exit(1)
 	}
 
@@ -55,7 +59,7 @@ main :: proc() {
 
 	for r in rituals {
 		if is_today(r, today) {
-			fmt.printfln("%s - %s", r.name, r.description)
+			fmt.printfln(ritual_to_string(r, allocator))
 		} else {
 			log.debugf("Skip ritual: %s", r.name)
 		}
