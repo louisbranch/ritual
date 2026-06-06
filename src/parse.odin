@@ -17,25 +17,32 @@ Ritual_Field :: enum {
 	Repeat,
 }
 
+// Field_Error pairs a Parse_Error with the document field it concerns; `field`
+// is meaningful only for parse failures, so it lives here rather than alongside
+// the OS errors in Load_Error.
+Field_Error :: struct {
+	field: Ritual_Field,
+	cause: Parse_Error,
+}
+
 // Load_Error locates a failure while loading rituals: `cause` is the underlying
-// OS or parse error, `file` the document it came from (empty for the directory
-// read itself), and `field` the offending field (None for non-parse errors). A
-// zero Load_Error — in particular a nil `cause` — means success.
+// OS or field error, and `file` the document it came from (empty for the
+// directory read itself). A zero Load_Error — in particular a nil `cause` —
+// means success.
 Load_Error :: struct {
 	file:  string,
-	field: Ritual_Field,
 	cause: union {
 		os.Error,
-		Parse_Error,
+		Field_Error,
 	},
 }
 
 // load_error_to_string renders a Load_Error as a single human-readable line,
 // e.g. `rituals/work.json: End field: Out_Of_Range`. Allocates into `allocator`.
-load_error_to_string :: proc(e: Load_Error, allocator := context.allocator) -> string {
+load_error_to_string :: proc(e: Load_Error, allocator: runtime.Allocator) -> string {
 	switch c in e.cause {
-	case Parse_Error:
-		return fmt.aprintf("%s: %v field: %v", e.file, e.field, c, allocator = allocator)
+	case Field_Error:
+		return fmt.aprintf("%s: %v field: %v", e.file, c.field, c.cause, allocator = allocator)
 	case os.Error:
 		if e.file != "" do return fmt.aprintf("%s: %v", e.file, c, allocator = allocator)
 		return fmt.aprintf("%v", c, allocator = allocator)
@@ -43,30 +50,27 @@ load_error_to_string :: proc(e: Load_Error, allocator := context.allocator) -> s
 	return strings.clone("no error", allocator)
 }
 
-// load_rituals_from_dir reads every file in dir_path and decodes each as a
-// ritual JSON document. The rituals are cloned into `allocator`; the directory
-// listing and raw file bytes are read into `scratch`, which the caller may
-// reclaim as soon as this returns.
-load_rituals_from_dir :: proc(
+// rituals_load_from_dir reads every file in dir_path and decodes each as a
+// ritual JSON document, sorted by start time.
+rituals_load_from_dir :: proc(
 	dir_path: string,
 	allocator: runtime.Allocator,
-	scratch: runtime.Allocator,
 ) -> (
 	rituals: [dynamic]Ritual,
 	err: Load_Error,
 ) {
 	rituals = make([dynamic]Ritual, allocator)
 
-	files, dir_err := os.read_all_directory_by_path(dir_path, scratch)
+	files, dir_err := os.read_all_directory_by_path(dir_path, allocator)
 	if dir_err != nil do return rituals, Load_Error{cause = dir_err}
 
 	for f in files {
-		data, read_err := os.read_entire_file_from_path(f.fullpath, scratch)
+		data, read_err := os.read_entire_file_from_path(f.fullpath, allocator)
 		if read_err != nil do return rituals, Load_Error{file = f.name, cause = read_err}
 
-		r, field, parse_err := unmarshal_ritual(data, allocator, scratch)
-		if parse_err != .None {
-			return rituals, Load_Error{file = f.name, field = field, cause = parse_err}
+		r, field_err := ritual_json_decode(data, allocator)
+		if field_err.cause != nil {
+			return rituals, Load_Error{file = f.name, cause = field_err}
 		}
 
 		append(&rituals, r)
@@ -81,53 +85,48 @@ load_rituals_from_dir :: proc(
 Ritual_Raw :: struct {
 	name:        string,
 	description: string,
-	start:       string, // "HH:MM" time-of-day, see parse_time
-	end:         string, // "HH:MM" time-of-day, see parse_time
+	start:       string, // "HH:MM" time-of-day, see time_parse
+	end:         string, // "HH:MM" time-of-day, see time_parse
 	repeat:      json.Value, // "daily" OR ["Mon","Tue",...]
 	steps:       [dynamic]string,
 }
 
-// unmarshal_ritual decodes a ritual JSON document into a Ritual. The JSON is
-// parsed into `scratch` (the raw strings, the duration fields and the repeat
-// Value tree); only the keeper fields are cloned into `allocator`, so the
-// caller may reclaim `scratch` as soon as this returns. The result does not
-// alias `data`.
-unmarshal_ritual :: proc(
-	data: []byte,
-	allocator: runtime.Allocator,
-	scratch: runtime.Allocator,
-) -> (
-	r: Ritual,
-	field: Ritual_Field,
-	err: Parse_Error,
-) {
+// ritual_json_decode decodes a ritual JSON document into a Ritual. On failure
+// it returns a Field_Error naming the offending field.
+ritual_json_decode :: proc(data: []byte, allocator: runtime.Allocator) -> (Ritual, Field_Error) {
+	r: Ritual
 	raw: Ritual_Raw
-	field = .Format
-	if json.unmarshal(data, &raw, allocator = scratch) != nil {
+
+	if json.unmarshal(data, &raw, allocator = allocator) != nil {
 		// Collapses json's richer Unmarshal_Error into the domain enum; parse
 		// against ritual.schema.json first if you need precise JSON diagnostics.
-		return {}, field, .Invalid_Format
+		return {}, {.Format, .Invalid_Format}
 	}
 
-	// Validate before cloning so a rejected ritual touches `allocator` not at all.
-	// `field` is set before each step so or_return carries the offending field out
-	// alongside the error.
-	field = .Start; r.start = parse_time(raw.start) or_return
-	field = .End; r.end = parse_time(raw.end) or_return
-	if r.end <= r.start do return {}, field, .End_Before_Start
-	field = .Repeat; r.repeat = parse_repeat(raw.repeat) or_return
+	err: Parse_Error
+	if r.start, err = time_parse(raw.start); err != nil {
+		return {}, {.Start, err}
+	}
+	if r.end, err = time_parse(raw.end); err != nil {
+		return {}, {.End, err}
+	}
+	if r.end <= r.start do return {}, {.End, .End_Before_Start}
+	if r.repeat, err = repeat_parse(raw.repeat); err != nil {
+		return {}, {.Repeat, err}
+	}
 
-	// The remaining fields live in `scratch`; clone them into `allocator`.
-	r.name = strings.clone(raw.name, allocator)
-	r.description = strings.clone(raw.description, allocator)
-	r.steps = make([dynamic]string, len(raw.steps), allocator)
-	for s, i in raw.steps do r.steps[i] = strings.clone(s, allocator)
-	return
+	// The string fields were already populated into `allocator` by
+	// json.unmarshal; adopt them as-is.
+	r.name = raw.name
+	r.description = raw.description
+	r.steps = raw.steps
+
+	return r, {}
 }
 
-// parse_repeat converts the schema's `repeat` oneOf — the literal string
+// repeat_parse converts the schema's `repeat` oneOf — the literal string
 // "daily" or a non-empty array of weekday names — into a Repeat bit_set.
-parse_repeat :: proc(v: json.Value) -> (rep: Repeat, err: Parse_Error) {
+repeat_parse :: proc(v: json.Value) -> (rep: Repeat, err: Parse_Error) {
 	#partial switch t in v {
 	case json.String:
 		if t == "daily" do return EVERY_DAY, .None
@@ -138,7 +137,7 @@ parse_repeat :: proc(v: json.Value) -> (rep: Repeat, err: Parse_Error) {
 		for elem in t {
 			name, ok := elem.(json.String)
 			if !ok do return {}, .Invalid_Format
-			wd := parse_weekday(name) or_return
+			wd := weekday_parse(name) or_return
 			rep += {wd}
 		}
 		return rep, .None
@@ -148,9 +147,9 @@ parse_repeat :: proc(v: json.Value) -> (rep: Repeat, err: Parse_Error) {
 	}
 }
 
-// parse_weekday parses a weekday name in 2-letter, 3-letter, or full form
+// weekday_parse parses a weekday name in 2-letter, 3-letter, or full form
 // (case-insensitive), matching ritual.schema.json's `weekday` definition.
-parse_weekday :: proc(s: string) -> (wd: Weekday, err: Parse_Error) {
+weekday_parse :: proc(s: string) -> (wd: Weekday, err: Parse_Error) {
 	max :: 9 // len("wednesday")
 
 	if len(s) == 0 do return {}, .Empty

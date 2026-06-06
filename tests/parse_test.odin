@@ -8,7 +8,7 @@ import "core:time"
 import ritual "../src"
 
 @(test)
-test_parse_weekday :: proc(t: ^testing.T) {
+test_weekday_parse :: proc(t: ^testing.T) {
 	Case :: struct {
 		input:   string,
 		want_wd: ritual.Weekday,
@@ -55,11 +55,11 @@ test_parse_weekday :: proc(t: ^testing.T) {
 	}
 
 	for c in cases {
-		wd, err := ritual.parse_weekday(c.input)
+		wd, err := ritual.weekday_parse(c.input)
 		testing.expectf(
 			t,
 			err == c.want_err,
-			"parse_weekday(%q) error = %v, want %v",
+			"weekday_parse(%q) error = %v, want %v",
 			c.input,
 			err,
 			c.want_err,
@@ -67,7 +67,7 @@ test_parse_weekday :: proc(t: ^testing.T) {
 		testing.expectf(
 			t,
 			wd == c.want_wd,
-			"parse_weekday(%q) = %v, want %v",
+			"weekday_parse(%q) = %v, want %v",
 			c.input,
 			wd,
 			c.want_wd,
@@ -76,7 +76,7 @@ test_parse_weekday :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
+test_ritual_json_decode_weekdays :: proc(t: ^testing.T) {
 	context.allocator = context.temp_allocator
 	defer free_all(context.temp_allocator)
 
@@ -89,8 +89,8 @@ test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
 		"steps": ["stretch", "coffee"]
 	}`
 
-	r, _, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
-	testing.expect_value(t, err, nil)
+	r, err := ritual.ritual_json_decode(transmute([]byte)doc, context.temp_allocator)
+	testing.expect_value(t, err.cause, nil)
 	testing.expect_value(t, r.name, "Morning")
 	testing.expect_value(t, r.start, ritual.Time_Of_Day(6 * time.Hour + 30 * time.Minute))
 	testing.expect_value(t, r.end, ritual.Time_Of_Day(7 * time.Hour + 45 * time.Minute))
@@ -99,7 +99,7 @@ test_unmarshal_ritual_weekdays :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_unmarshal_ritual_daily :: proc(t: ^testing.T) {
+test_ritual_json_decode_daily :: proc(t: ^testing.T) {
 	context.allocator = context.temp_allocator
 	defer free_all(context.temp_allocator)
 
@@ -112,13 +112,13 @@ test_unmarshal_ritual_daily :: proc(t: ^testing.T) {
 		"steps": ["go"]
 	}`
 
-	r, _, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
-	testing.expect_value(t, err, nil)
+	r, err := ritual.ritual_json_decode(transmute([]byte)doc, context.temp_allocator)
+	testing.expect_value(t, err.cause, nil)
 	testing.expect_value(t, r.repeat, ritual.EVERY_DAY)
 }
 
 @(test)
-test_unmarshal_ritual_end_before_start :: proc(t: ^testing.T) {
+test_ritual_json_decode_end_before_start :: proc(t: ^testing.T) {
 	context.allocator = context.temp_allocator
 	defer free_all(context.temp_allocator)
 
@@ -136,10 +136,86 @@ test_unmarshal_ritual_end_before_start :: proc(t: ^testing.T) {
 			end,
 		)
 
-		_, field, err := ritual.unmarshal_ritual(transmute([]byte)doc, context.temp_allocator, context.temp_allocator)
-		testing.expect_value(t, err, ritual.Parse_Error.End_Before_Start)
-		testing.expect_value(t, field, ritual.Ritual_Field.End)
+		_, err := ritual.ritual_json_decode(transmute([]byte)doc, context.temp_allocator)
+		testing.expect_value(t, err.cause, ritual.Parse_Error.End_Before_Start)
+		testing.expect_value(t, err.field, ritual.Ritual_Field.End)
 	}
+}
+
+@(test)
+test_ritual_json_decode_errors :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	defer free_all(context.temp_allocator)
+
+	Case :: struct {
+		name:       string,
+		doc:        string,
+		want_field: ritual.Ritual_Field,
+		want_err:   ritual.Parse_Error,
+	}
+
+	// A well-formed document, used as the baseline each case mutates a single
+	// field of so the failure under test is the only thing that differs.
+	ok := `{
+		"name": "X",
+		"description": "d",
+		"start": "06:30",
+		"end": "07:45",
+		"repeat": "daily",
+		"steps": ["go"]
+	}`
+
+	cases := []Case {
+		// Malformed JSON collapses to a Format-level failure before any field is
+		// reached.
+		{"not json", `not json at all`, .Format, .Invalid_Format},
+		{"truncated", `{"name": "X"`, .Format, .Invalid_Format},
+		{"empty", ``, .Format, .Invalid_Format},
+
+		// start: time_parse rejects shape, non-numbers, and out-of-range values.
+		{"start bad shape", `{"name":"X","description":"d","start":"6:30","end":"07:45","repeat":"daily","steps":["go"]}`, .Start, .Invalid_Format},
+		{"start not number", `{"name":"X","description":"d","start":"ab:30","end":"07:45","repeat":"daily","steps":["go"]}`, .Start, .Invalid_Number},
+		{"start out of range", `{"name":"X","description":"d","start":"24:00","end":"07:45","repeat":"daily","steps":["go"]}`, .Start, .Out_Of_Range},
+
+		// end: same time_parse path, plus the End_Before_Start ordering check.
+		{"end bad shape", `{"name":"X","description":"d","start":"06:30","end":"7:45","repeat":"daily","steps":["go"]}`, .End, .Invalid_Format},
+		{"end out of range", `{"name":"X","description":"d","start":"06:30","end":"07:60","repeat":"daily","steps":["go"]}`, .End, .Out_Of_Range},
+		{"end equals start", `{"name":"X","description":"d","start":"06:30","end":"06:30","repeat":"daily","steps":["go"]}`, .End, .End_Before_Start},
+		{"end before start", `{"name":"X","description":"d","start":"06:30","end":"06:00","repeat":"daily","steps":["go"]}`, .End, .End_Before_Start},
+
+		// repeat: only "daily" or a non-empty array of valid weekday names.
+		{"repeat bad string", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":"weekly","steps":["go"]}`, .Repeat, .Invalid_Format},
+		{"repeat empty array", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":[],"steps":["go"]}`, .Repeat, .Invalid_Format},
+		{"repeat bad weekday", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":["funday"],"steps":["go"]}`, .Repeat, .Invalid_Format},
+		{"repeat empty weekday", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":[""],"steps":["go"]}`, .Repeat, .Empty},
+		{"repeat non-string element", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":[1],"steps":["go"]}`, .Repeat, .Invalid_Format},
+		{"repeat wrong type", `{"name":"X","description":"d","start":"06:30","end":"07:45","repeat":42,"steps":["go"]}`, .Repeat, .Invalid_Format},
+	}
+
+	for c in cases {
+		_, err := ritual.ritual_json_decode(transmute([]byte)c.doc, context.temp_allocator)
+		testing.expectf(
+			t,
+			err.cause == c.want_err,
+			"%s: ritual_json_decode error = %v, want %v",
+			c.name,
+			err.cause,
+			c.want_err,
+		)
+		testing.expectf(
+			t,
+			err.field == c.want_field,
+			"%s: ritual_json_decode field = %v, want %v",
+			c.name,
+			err.field,
+			c.want_field,
+		)
+	}
+
+	// Sanity check the baseline decodes cleanly, so the cases above really are
+	// isolating one failure rather than tripping over a broken template.
+	_, ok_err := ritual.ritual_json_decode(transmute([]byte)ok, context.temp_allocator)
+	testing.expect_value(t, ok_err.cause, nil)
 }
 
 @(test)
@@ -149,8 +225,7 @@ test_load_error_to_string :: proc(t: ^testing.T) {
 
 	e := ritual.Load_Error {
 		file  = "rituals/work.json",
-		field = .End,
-		cause = ritual.Parse_Error.Out_Of_Range,
+		cause = ritual.Field_Error{field = .End, cause = ritual.Parse_Error.Out_Of_Range},
 	}
 	testing.expect_value(
 		t,
@@ -160,7 +235,7 @@ test_load_error_to_string :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_load_rituals_from_dir :: proc(t: ^testing.T) {
+test_rituals_load_from_dir :: proc(t: ^testing.T) {
 	context.allocator = context.temp_allocator
 	defer free_all(context.temp_allocator)
 
@@ -168,7 +243,7 @@ test_load_rituals_from_dir :: proc(t: ^testing.T) {
 	dir, join_err := os.join_path({#directory, "fixtures"}, context.temp_allocator)
 	testing.expect_value(t, join_err, nil)
 
-	rituals, err := ritual.load_rituals_from_dir(dir, context.temp_allocator, context.temp_allocator)
+	rituals, err := ritual.rituals_load_from_dir(dir, context.temp_allocator)
 	testing.expect_value(t, err.cause, nil)
 	testing.expect_value(t, len(rituals), 2)
 

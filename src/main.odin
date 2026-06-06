@@ -13,15 +13,6 @@ main :: proc() {
 	context.logger = log.create_console_logger(lowest)
 	defer log.destroy_console_logger(context.logger)
 
-	// arena holds the rituals for the whole run.
-	arena: virtual.Arena
-	if err := virtual.arena_init_growing(&arena); err != nil {
-		log.fatalf("failed to initialize memory: %v", err)
-		os.exit(1)
-	}
-	defer virtual.arena_destroy(&arena)
-	allocator := virtual.arena_allocator(&arena)
-
 	// scratch holds the path strings, directory listing and raw file bytes
 	// needed only while loading; it is thrown away once the rituals are parsed.
 	scratch: virtual.Arena
@@ -43,7 +34,7 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	rituals, load_err := load_rituals_from_dir(dir_path, allocator, scratch_alloc)
+	loaded, load_err := rituals_load_from_dir(dir_path, scratch_alloc)
 	if load_err.cause != nil {
 		log.fatalf(
 			"failed to load rituals from %s: %s",
@@ -52,6 +43,20 @@ main :: proc() {
 		)
 		os.exit(1)
 	}
+
+	// arena holds the rituals for the whole run.
+	arena: virtual.Arena
+	if err := virtual.arena_init_growing(&arena); err != nil {
+		log.fatalf("failed to initialize memory: %v", err)
+		os.exit(1)
+	}
+	defer virtual.arena_destroy(&arena)
+	allocator := virtual.arena_allocator(&arena)
+
+	// rituals_load_from_dir parses into scratch; clone the keepers into the
+	// run-long arena so they survive scratch being reclaimed below.
+	rituals := make([dynamic]Ritual, 0, len(loaded), allocator)
+	for r in loaded do append(&rituals, ritual_clone(r, allocator))
 
 	today := local_date(time.now(), scratch_alloc)
 

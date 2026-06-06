@@ -7,7 +7,7 @@ import "core:time/datetime"
 import ritual "../src"
 
 @(test)
-test_parse_time :: proc(t: ^testing.T) {
+test_time_parse :: proc(t: ^testing.T) {
 	Case :: struct {
 		input: string,
 		want: ritual.Time_Of_Day,
@@ -37,10 +37,10 @@ test_parse_time :: proc(t: ^testing.T) {
 	}
 
 	for c in cases {
-		d, err := ritual.parse_time(c.input)
-		testing.expectf(t, err == c.err, "parse_time(%q) err = %v, want %v", c.input, err, c.err)
+		d, err := ritual.time_parse(c.input)
+		testing.expectf(t, err == c.err, "time_parse(%q) err = %v, want %v", c.input, err, c.err)
 		if c.err == .None {
-			testing.expectf(t, d == c.want, "parse_time(%q) = %v, want %v", c.input, d, c.want)
+			testing.expectf(t, d == c.want, "time_parse(%q) = %v, want %v", c.input, d, c.want)
 		}
 	}
 }

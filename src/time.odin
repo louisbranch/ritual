@@ -20,7 +20,7 @@ Parse_Error :: enum {
 //
 // Requires exactly two digits for each field. Rejects negatives, missing
 // fields, and out-of-range values (hour > 23 or minute > 59).
-parse_time :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
+time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
 	if len(s) != 5 || s[2] != ':' do return 0, .Invalid_Format
 
 	hour, hour_ok := strconv.parse_uint(s[0:2])
