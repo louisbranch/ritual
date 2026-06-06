@@ -9,7 +9,8 @@ import "core:time"
 APP_NAME :: "ritual"
 
 main :: proc() {
-	context.logger = log.create_console_logger()
+	lowest := log.Level.Debug when ODIN_DEBUG else log.Level.Info
+	context.logger = log.create_console_logger(lowest)
 	defer log.destroy_console_logger(context.logger)
 
 	// arena holds the rituals for the whole run.
