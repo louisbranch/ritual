@@ -22,17 +22,6 @@ Ritual :: struct {
 	steps:       [dynamic]string,
 }
 
-// ritual_clone deep-copies r's string fields into allocator, so the result is
-// independent of the memory backing r.
-ritual_clone :: proc(r: Ritual, allocator: runtime.Allocator) -> Ritual {
-	c := r
-	c.name = strings.clone(r.name, allocator)
-	c.description = strings.clone(r.description, allocator)
-	c.steps = make([dynamic]string, len(r.steps), allocator)
-	for s, i in r.steps do c.steps[i] = strings.clone(s, allocator)
-	return c
-}
-
 ritual_to_string :: proc(r: Ritual, allocator: runtime.Allocator) -> string {
 	hm :: 5 // HH:MM only
 	start_buf, end_buf: [time.MIN_HMS_LEN]byte

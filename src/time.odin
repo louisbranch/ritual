@@ -6,21 +6,12 @@ import "core:time"
 import "core:time/datetime"
 import "core:time/timezone"
 
-Parse_Error :: enum {
-	None,
-	Empty, // input string was empty
-	Invalid_Format, // missing unit, wrong shape, or trailing junk
-	Invalid_Number, // a field was not a non-negative integer
-	Out_Of_Range, // value outside its allowed bounds
-	End_Before_Start, // ritual end is not after its start
-}
-
 // Parses a "HH:MM" time-of-day into a Time_Of_Day offset since midnight
 // (0..<24h).
 //
 // Requires exactly two digits for each field. Rejects negatives, missing
 // fields, and out-of-range values (hour > 23 or minute > 59).
-time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
+time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Ritual_Field_Error) {
 	if len(s) != 5 || s[2] != ':' do return 0, .Invalid_Format
 
 	hour, hour_ok := strconv.parse_uint(s[0:2])
@@ -30,8 +21,9 @@ time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
 
 	if hour > 23 || minute > 59 do return 0, .Out_Of_Range
 
-	return Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute),
-		.None
+	d = Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute)
+
+	return d, .None
 }
 
 // local_date returns the calendar date at instant `t` in the system's local
@@ -46,7 +38,10 @@ time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Parse_Error) {
 local_date :: proc(
 	t: time.Time,
 	scratch: runtime.Allocator,
-) -> (date: datetime.Date, ok: bool) #optional_ok {
+) -> (
+	date: datetime.Date,
+	ok: bool,
+) #optional_ok {
 	dt := time.time_to_datetime(t) or_return
 
 	// "local" resolves to /etc/localtime; a nil region means UTC, which

@@ -11,7 +11,7 @@ test_time_parse :: proc(t: ^testing.T) {
 	Case :: struct {
 		input: string,
 		want: ritual.Time_Of_Day,
-		err:  ritual.Parse_Error,
+		err:  ritual.Ritual_Field_Error,
 	}
 
 	cases := []Case {
