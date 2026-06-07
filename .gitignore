@@ -1,6 +1,4 @@
 # Odin build artifacts
-/ritual
-/ritual.bin
 *.exe
 *.o
 *.obj

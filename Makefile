@@ -1,13 +1,19 @@
 .PHONY: run test build release
 
+BUILD_DIR := build
+BIN := $(BUILD_DIR)/ritual
+
 run:
-	odin run src -out:ritual.bin -debug
+	@mkdir -p $(BUILD_DIR)
+	odin run src -out:$(BIN) -debug
 
 build:
-	odin build src -out:ritual.bin -debug
+	@mkdir -p $(BUILD_DIR)
+	odin build src -out:$(BIN) -debug
 
 release:
-	odin build src -out:ritual.bin -o:speed -disable-assert -no-bounds-check
+	@mkdir -p $(BUILD_DIR)
+	odin build src -out:$(BIN) -o:speed -disable-assert -no-bounds-check
 
 test:
 	odin test tests
