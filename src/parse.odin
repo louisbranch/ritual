@@ -68,7 +68,7 @@ ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual
 		// Collapses json's richer Unmarshal_Error into the domain enum; parse
 		// against ritual.schema.json first if you need precise JSON diagnostics.
 		log.debugf("JSON unmarshal %v", err)
-		return {error = .JSON_Error}
+		return {file = path, error = .JSON_Error}
 	}
 
 	r: Ritual

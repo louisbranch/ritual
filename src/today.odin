@@ -39,7 +39,7 @@ command_today :: proc(allocator: runtime.Allocator) -> (cmd: Command_Today, err:
 		case .Read_Error:
 			log.errorf("failed to read %s %v", e.file, e.error)
 		case .JSON_Error:
-			log.errorf("failed to parse JSON %s %v", e.file, e.error)
+			log.errorf("failed to parse %s %v", e.file, e.error)
 		case .Field_Error:
 			b := strings.builder_make(allocator)
 			for field_err, field in e.validation {

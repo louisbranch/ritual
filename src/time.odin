@@ -11,7 +11,7 @@ import "core:time/timezone"
 //
 // Requires exactly two digits for each field. Rejects negatives, missing
 // fields, and out-of-range values (hour > 23 or minute > 59).
-time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Ritual_Field_Error) {
+time_parse :: proc(s: string) -> (Time_Of_Day, Ritual_Field_Error) {
 	if len(s) != 5 || s[2] != ':' do return 0, .Invalid_Format
 
 	hour, hour_ok := strconv.parse_uint(s[0:2])
@@ -21,7 +21,7 @@ time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Ritual_Field_Error) {
 
 	if hour > 23 || minute > 59 do return 0, .Out_Of_Range
 
-	d = Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute)
+	d := Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute)
 
 	return d, .None
 }

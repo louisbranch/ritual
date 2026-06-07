@@ -6,7 +6,7 @@ import "core:mem/virtual"
 import "core:os"
 
 APP_NAME :: "ritual"
-APP_VERSION :: "0.2.1"
+APP_VERSION :: "0.2.2"
 
 main :: proc() {
 	lowest := log.Level.Debug when ODIN_DEBUG else log.Level.Info
