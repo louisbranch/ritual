@@ -17,11 +17,21 @@ $ make run
 
 A *ritual* is a recurring activity with a name, a description, a start time, an
 end time, a repeat rule, and an optional list of steps. Each ritual lives in
-its own JSON file. On every run the tool:
+its own JSON file. When you run the `today` command the tool:
 
 1. Reads all ritual files from the data directory.
 2. Keeps only the rituals that repeat today (a specific weekday, or daily).
 3. Sorts them by start time and prints a one-line summary of each.
+
+## Commands
+
+```sh
+ritual today      # list rituals for the current date (default)
+ritual version    # print version information
+ritual help       # show usage and available commands
+```
+
+With no command, `ritual` runs `today`.
 
 ## Ritual format
 
@@ -65,7 +75,7 @@ You'll need the [Odin compiler](https://odin-lang.org/docs/install/).
 ```sh
 make run         # build and print today's rituals
 make test        # run the test suite (odin test tests)
-make build       # build a debug binary at ./ritual.bin
+make build       # build a debug binary at ./build/ritual
 ```
 
 The `make` targets wrap `odin run`/`odin build`/`odin test`; see the
@@ -75,7 +85,7 @@ The `make` targets wrap `odin run`/`odin build`/`odin test`; see the
 
 ```sh
 make release     # odin build with -o:speed, asserts and bounds checks disabled
-./ritual.bin
+./build/ritual
 ```
 
 ## License
