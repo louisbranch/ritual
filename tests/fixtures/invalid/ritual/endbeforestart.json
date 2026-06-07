@@ -1,0 +1,8 @@
+{
+  "name": "Backwards",
+  "description": "end is not after start",
+  "start": "07:00",
+  "end": "06:00",
+  "repeat": "daily",
+  "steps": ["go"]
+}

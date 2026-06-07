@@ -3,6 +3,7 @@ package ritual
 import "base:runtime"
 import "core:encoding/json"
 import "core:log"
+import "core:os"
 
 Ritual_Parse :: struct {
 	file:       string,
@@ -54,8 +55,13 @@ Ritual_Raw :: struct {
 
 // ritual_json_decode decodes a ritual JSON document into a Ritual. On failure
 // it returns a Field_Error naming the offending field.
-ritual_json_decode :: proc(data: []byte, allocator: runtime.Allocator) -> Ritual_Parse {
-	r: Ritual
+ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual_Parse {
+
+	data, read_err := os.read_entire_file_from_path(path, allocator)
+	if read_err != nil {
+		return {file = path, error = .Read_Error}
+	}
+
 	raw: Ritual_Raw
 
 	if err := json.unmarshal(data, &raw, allocator = allocator); err != nil {
@@ -65,6 +71,7 @@ ritual_json_decode :: proc(data: []byte, allocator: runtime.Allocator) -> Ritual
 		return {error = .JSON_Error}
 	}
 
+	r: Ritual
 	valid: Ritual_Field_Validation
 	err: Ritual_Field_Error
 
@@ -97,6 +104,7 @@ ritual_json_decode :: proc(data: []byte, allocator: runtime.Allocator) -> Ritual
 	r.steps = raw.steps
 
 	return Ritual_Parse {
+		file = path,
 		ritual = r,
 		validation = valid,
 		error = .None if valid == {} else .Field_Error,

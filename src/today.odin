@@ -26,27 +26,16 @@ command_today :: proc(allocator: runtime.Allocator) -> (cmd: Command_Today, err:
 
 	entries := make(#soa[dynamic]Ritual_Parse, len(files), allocator)
 
-	for f, i in files {
-		data, read_err := os.read_entire_file_from_path(f.fullpath, allocator)
-		if read_err != nil {
-			entries[i] = {
-				file  = f.name,
-				error = .Read_Error,
-			}
+	for f, i in files do entries[i] = ritual_json_decode(f.fullpath, allocator)
 
-			continue
-		}
-
-		entry := ritual_json_decode(data, allocator)
-		entry.file = f.name
-		entries[i] = entry
-	}
 	cmd.entries = entries
+	rituals := make([dynamic]Ritual, 0, len(entries), allocator)
 
 	for e in entries {
 		switch e.error {
 		case .None:
 			log.debugf("ok - %s", e.file)
+			append(&rituals, e.ritual)
 		case .Read_Error:
 			log.errorf("failed to read %s %v", e.file, e.error)
 		case .JSON_Error:
@@ -61,11 +50,7 @@ command_today :: proc(allocator: runtime.Allocator) -> (cmd: Command_Today, err:
 		}
 	}
 
-	// Clone the ritual column before sorting: soa_unzip aliases the entries'
-	// backing store, so sorting in place would desync the returned entries.
-	_, ritual_col, _, _ := soa_unzip(entries[:])
-	rituals := slice.clone(ritual_col, allocator)
-	slice.sort_by(rituals, proc(a, b: Ritual) -> bool {return a.start < b.start})
+	slice.sort_by(rituals[:], proc(a, b: Ritual) -> bool {return a.start < b.start})
 
 	today := local_date(time.now(), allocator)
 

@@ -70,7 +70,7 @@ test_command_today :: proc(t: ^testing.T) {
 
 		cmd, err := ritual.command_today(context.temp_allocator)
 		testing.expect(t, err == nil, "command_today returned an error")
-		testing.expect_value(t, len(cmd.entries), 2)
+		testing.expect_value(t, len(cmd.entries), 3)
 
 		by_file := make(map[string]ritual.Ritual_Parse)
 		for e in cmd.entries do by_file[e.file] = e
@@ -79,11 +79,23 @@ test_command_today :: proc(t: ^testing.T) {
 		testing.expect(t, has_notjson, "expected notjson.json entry")
 		testing.expect_value(t, notjson.error, ritual.Ritual_Parse_Error.JSON_Error)
 
+		// badfields.json fails every field at once: each is classified
+		// independently rather than collapsing to the first failure.
 		bad, has_bad := by_file["badfields.json"]
 		testing.expect(t, has_bad, "expected badfields.json entry")
 		testing.expect_value(t, bad.error, ritual.Ritual_Parse_Error.Field_Error)
 		testing.expect_value(t, bad.validation[.Name], ritual.Ritual_Field_Error.Empty)
+		testing.expect_value(t, bad.validation[.Description], ritual.Ritual_Field_Error.Empty)
+		testing.expect_value(t, bad.validation[.Start], ritual.Ritual_Field_Error.Invalid_Format)
 		testing.expect_value(t, bad.validation[.End], ritual.Ritual_Field_Error.Out_Of_Range)
 		testing.expect_value(t, bad.validation[.Repeat], ritual.Ritual_Field_Error.Invalid_Format)
+
+		// end-before-start is a cross-field check: both fields parse cleanly on
+		// their own, so it is flagged on Start and End together.
+		rev, has_rev := by_file["endbeforestart.json"]
+		testing.expect(t, has_rev, "expected endbeforestart.json entry")
+		testing.expect_value(t, rev.error, ritual.Ritual_Parse_Error.Field_Error)
+		testing.expect_value(t, rev.validation[.Start], ritual.Ritual_Field_Error.End_Before_Start)
+		testing.expect_value(t, rev.validation[.End], ritual.Ritual_Field_Error.End_Before_Start)
 	}
 }
