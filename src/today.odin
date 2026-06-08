@@ -2,65 +2,73 @@ package ritual
 
 import "base:runtime"
 import "core:fmt"
+import "core:io"
 import "core:log"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
 
-Command_Today :: struct {
-	path:    string,
-	entries: #soa[dynamic]Ritual_Parse,
-}
-
 // command_today loads every ritual document under the user data dir, reports
-// any per-file errors, and prints the rituals scheduled for today. Everything
-// it returns is allocated in `allocator`, so the caller owns the lifetime.
-command_today :: proc(allocator: runtime.Allocator) -> (cmd: Command_Today, err: os.Error) {
+// any per-file errors, and prints the rituals scheduled for today, sorted by
+// start time.
+command_today :: proc(out, errw: io.Writer) -> Error {
+	arena: virtual.Arena
+	virtual.arena_init_growing(&arena) or_return
+	defer virtual.arena_destroy(&arena)
+
+	allocator := virtual.arena_allocator(&arena)
+
 	data_path := os.user_data_dir(allocator) or_return
-
 	dir_path := os.join_path({data_path, APP_NAME}, allocator) or_return
-	cmd.path = dir_path
 
-	files := os.read_all_directory_by_path(dir_path, allocator) or_return
+	entries, err := rituals_parse(dir_path, allocator)
+	if err == os.General_Error.Not_Exist {
+		fmt.wprintfln(errw, "directory doesn't exist: %s", dir_path)
+		return .No_Data_Directory
+	}
+	if err != nil do return err
 
-	entries := make(#soa[dynamic]Ritual_Parse, len(files), allocator)
+	if len(entries) == 0 {
+		fmt.wprintfln(errw, "no rituals found in %s", dir_path)
+		return .No_Files
+	}
 
-	for f, i in files do entries[i] = ritual_json_decode(f.fullpath, allocator)
-
-	cmd.entries = entries
 	rituals := make([dynamic]Ritual, 0, len(entries), allocator)
+
+	weekday := local_weekday(time.now(), allocator)
 
 	for e in entries {
 		switch e.error {
 		case .None:
-			log.debugf("ok - %s", e.file)
-			append(&rituals, e.ritual)
+			if weekday in e.ritual.repeat {
+				append(&rituals, e.ritual)
+			} else {
+				log.debugf("skip - %s: %w", e.ritual.name, e.ritual.repeat)
+			}
 		case .Read_Error:
 			log.errorf("failed to read %s %v", e.file, e.error)
 		case .JSON_Error:
 			log.errorf("failed to parse %s %v", e.file, e.error)
 		case .Field_Error:
 			b := strings.builder_make(allocator)
-			for field_err, field in e.validation {
-				if field_err == .None do continue
-				fmt.sbprintfln(&b, "  %v: %v", field, field_err)
+			for err, field in e.validation {
+				if err == .None do continue
+				fmt.sbprintfln(&b, "  %v: %v", field, err)
 			}
 			log.errorf("failed to validate fields in %s:\n%s", e.file, strings.to_string(b))
 		}
 	}
 
-	slice.sort_by(rituals[:], proc(a, b: Ritual) -> bool {return a.start < b.start})
-
-	today := local_date(time.now(), allocator)
-
-	for r in rituals {
-		if is_today(r, today) {
-			fmt.printfln(ritual_to_string(r, allocator))
-		} else {
-			log.debugf("Skip ritual: %s", r.name)
-		}
+	if len(rituals) == 0 {
+		fmt.wprintfln(out, "no rituals scheduled for today (%v)", weekday)
+		return nil
 	}
 
-	return cmd, nil
+	slice.sort_by(rituals[:], proc(a, b: Ritual) -> bool {return a.start < b.start})
+
+	for r in rituals do fmt.wprintln(out, ritual_to_string(r, allocator))
+
+	return nil
 }

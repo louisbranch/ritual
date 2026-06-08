@@ -22,6 +22,9 @@ Ritual :: struct {
 	steps:       [dynamic]string,
 }
 
+// ritual_to_string renders the one-line display form shown to the user —
+// "[HH:MM - HH:MM] name: description". It is not a full dump of the struct:
+// repeat and steps are omitted.
 ritual_to_string :: proc(r: Ritual, allocator: runtime.Allocator) -> string {
 	hm :: 5 // HH:MM only
 	start_buf, end_buf: [time.MIN_HMS_LEN]byte

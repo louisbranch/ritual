@@ -16,7 +16,7 @@ Ritual_Parse_Error :: enum {
 	None,
 	Read_Error, // unable to read file
 	JSON_Error, // unable to unmarshal file from JSON
-	Field_Error, // one ore more fields failed parsing
+	Field_Error, // one or more fields failed parsing
 }
 
 Ritual_Parse_Field :: enum {
@@ -53,12 +53,40 @@ Ritual_Raw :: struct {
 	steps:       [dynamic]string,
 }
 
-// ritual_json_decode decodes a ritual JSON document into a Ritual. On failure
-// it returns a Field_Error naming the offending field.
-ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual_Parse {
+// rituals_parse loads and decodes every ritual document in the given directory.
+rituals_parse :: proc(
+	path: string,
+	allocator: runtime.Allocator,
+) -> (
+	[dynamic]Ritual_Parse,
+	os.Error,
+) {
+	files, err := os.read_all_directory_by_path(path, allocator)
+	if err != nil {
+		log.debugf("failed to read dir %s: %v", path, err)
+		return nil, err
+	}
 
+	entries := make([dynamic]Ritual_Parse, 0, len(files), allocator)
+
+	for f in files {
+		if f.type != os.File_Type.Regular {
+			log.debugf("not a file %q", f.fullpath)
+			continue
+		}
+		entry := ritual_json_decode(f.fullpath, allocator)
+		append(&entries, entry)
+	}
+	return entries, nil
+}
+
+// ritual_json_decode decodes a single ritual JSON file. A read, JSON, or
+// field-level failure is recorded in the result's error field rather than
+// aborting, so one bad file never fails the whole load.
+ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual_Parse {
 	data, read_err := os.read_entire_file_from_path(path, allocator)
 	if read_err != nil {
+		log.debugf("file read %v", read_err)
 		return {file = path, error = .Read_Error}
 	}
 
@@ -72,33 +100,33 @@ ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual
 	}
 
 	r: Ritual
-	valid: Ritual_Field_Validation
+	validation: Ritual_Field_Validation
 	err: Ritual_Field_Error
 
 	if r.start, err = time_parse(raw.start); err != nil {
-		valid[.Start] = err
+		validation[.Start] = err
 	}
 	if r.end, err = time_parse(raw.end); err != nil {
-		valid[.End] = err
+		validation[.End] = err
 	}
 	if err == nil && r.end <= r.start {
-		valid[.Start] = .End_Before_Start
-		valid[.End] = .End_Before_Start
+		validation[.Start] = .End_Before_Start
+		validation[.End] = .End_Before_Start
 	}
 	if r.repeat, err = repeat_parse(raw.repeat); err != nil {
-		valid[.Repeat] = err
+		validation[.Repeat] = err
 	}
 
 	// The string fields were already populated into `allocator` by
 	// json.unmarshal; adopt them as-is.
 	r.name = raw.name
 	if r.name == "" {
-		valid[.Name] = .Empty
+		validation[.Name] = .Empty
 	}
 
 	r.description = raw.description
 	if r.description == "" {
-		valid[.Description] = .Empty
+		validation[.Description] = .Empty
 	}
 
 	r.steps = raw.steps
@@ -106,8 +134,8 @@ ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual
 	return Ritual_Parse {
 		file = path,
 		ritual = r,
-		validation = valid,
-		error = .None if valid == {} else .Field_Error,
+		validation = validation,
+		error = .None if validation == {} else .Field_Error,
 	}
 }
 
@@ -137,7 +165,7 @@ repeat_parse :: proc(v: json.Value) -> (rep: Repeat, err: Ritual_Field_Error) {
 // weekday_parse parses a weekday name in 2-letter, 3-letter, or full form
 // (case-insensitive), matching ritual.schema.json's `weekday` definition.
 weekday_parse :: proc(s: string) -> (wd: Weekday, err: Ritual_Field_Error) {
-	max :: 9 // len("wednesday")
+	max :: len("wednesday")
 
 	if len(s) == 0 do return {}, .Empty
 	if len(s) > max do return {}, .Invalid_Format

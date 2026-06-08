@@ -1,9 +1,99 @@
 package tests
 
 import "core:encoding/json"
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
+import "core:time"
 
 import ritual "../src"
+
+// rituals_parse reads every ritual document in a directory. We point it at our
+// fixture directories directly so the whole load path runs against known files.
+@(test)
+test_rituals_parse :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	defer free_all(context.temp_allocator)
+
+	// --- valid fixtures: every file loads cleanly ---
+	{
+		dir, _ := os.join_path({#directory, "fixtures", "valid", "ritual"}, context.temp_allocator)
+
+		entries, err := ritual.rituals_parse(dir, context.temp_allocator)
+		testing.expect(t, err == nil, "rituals_parse returned an error")
+		testing.expect_value(t, len(entries), 2)
+
+		// Directory order is filesystem-dependent, so index by name.
+		by_name := make(map[string]ritual.Ritual_Parse)
+		for e in entries do by_name[e.ritual.name] = e
+
+		yoga, has_yoga := by_name["Nightly Yoga"]
+		testing.expect(t, has_yoga, "expected a \"Nightly Yoga\" ritual")
+		testing.expect_value(t, yoga.error, ritual.Ritual_Parse_Error.None)
+		testing.expect_value(t, yoga.ritual.start, ritual.Time_Of_Day(21 * time.Hour))
+		testing.expect_value(
+			t,
+			yoga.ritual.end,
+			ritual.Time_Of_Day(21 * time.Hour + 25 * time.Minute),
+		)
+		testing.expect_value(t, yoga.ritual.repeat, ritual.EVERY_DAY)
+
+		mind, has_mind := by_name["Mindfulness"]
+		testing.expect(t, has_mind, "expected a \"Mindfulness\" ritual")
+		testing.expect_value(t, mind.error, ritual.Ritual_Parse_Error.None)
+		testing.expect_value(
+			t,
+			mind.ritual.start,
+			ritual.Time_Of_Day(6 * time.Hour + 30 * time.Minute),
+		)
+		testing.expect_value(
+			t,
+			mind.ritual.end,
+			ritual.Time_Of_Day(6 * time.Hour + 45 * time.Minute),
+		)
+		testing.expect_value(t, mind.ritual.repeat, ritual.EVERY_DAY)
+	}
+
+	// --- invalid fixtures: errors are classified per file, not fatal ---
+	{
+		dir, _ := os.join_path(
+			{#directory, "fixtures", "invalid", "ritual"},
+			context.temp_allocator,
+		)
+
+		entries, err := ritual.rituals_parse(dir, context.temp_allocator)
+		testing.expect(t, err == nil, "rituals_parse returned an error")
+		testing.expect_value(t, len(entries), 3)
+
+		// e.file is the absolute path; index by base name so the fixtures can be
+		// looked up by their filenames below.
+		by_file := make(map[string]ritual.Ritual_Parse)
+		for e in entries do by_file[filepath.base(e.file)] = e
+
+		notjson, has_notjson := by_file["notjson.json"]
+		testing.expect(t, has_notjson, "expected notjson.json entry")
+		testing.expect_value(t, notjson.error, ritual.Ritual_Parse_Error.JSON_Error)
+
+		// badfields.json fails every field at once: each is classified
+		// independently rather than collapsing to the first failure.
+		bad, has_bad := by_file["badfields.json"]
+		testing.expect(t, has_bad, "expected badfields.json entry")
+		testing.expect_value(t, bad.error, ritual.Ritual_Parse_Error.Field_Error)
+		testing.expect_value(t, bad.validation[.Name], ritual.Ritual_Field_Error.Empty)
+		testing.expect_value(t, bad.validation[.Description], ritual.Ritual_Field_Error.Empty)
+		testing.expect_value(t, bad.validation[.Start], ritual.Ritual_Field_Error.Invalid_Format)
+		testing.expect_value(t, bad.validation[.End], ritual.Ritual_Field_Error.Out_Of_Range)
+		testing.expect_value(t, bad.validation[.Repeat], ritual.Ritual_Field_Error.Invalid_Format)
+
+		// end-before-start is a cross-field check: both fields parse cleanly on
+		// their own, so it is flagged on Start and End together.
+		rev, has_rev := by_file["endbeforestart.json"]
+		testing.expect(t, has_rev, "expected endbeforestart.json entry")
+		testing.expect_value(t, rev.error, ritual.Ritual_Parse_Error.Field_Error)
+		testing.expect_value(t, rev.validation[.Start], ritual.Ritual_Field_Error.End_Before_Start)
+		testing.expect_value(t, rev.validation[.End], ritual.Ritual_Field_Error.End_Before_Start)
+	}
+}
 
 @(test)
 test_weekday_parse :: proc(t: ^testing.T) {

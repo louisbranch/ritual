@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-08
+
+### Added
+
+- `today` now reports a clear error and exits when the user data directory does
+  not exist, instead of failing opaquely.
+- `today` prints `no rituals found` when the data directory contains no ritual
+  documents.
+
+### Changed
+
+- Extracted directory loading into `rituals_parse`, which decodes every ritual
+  document in a given directory; `command_today` now resolves the user data dir
+  and delegates to it.
+- `command_today` owns its own growing arena for a run instead of taking an
+  allocator from the caller.
+- `rituals_parse` skips non-regular directory entries instead of attempting to
+  parse them.
+
 ## [0.2.2] - 2026-06-07
 
 ### Fixed
@@ -48,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split memory into separate scratch and data arenas.
 - Release build target.
 
+[0.2.3]: https://github.com/louisbranch/ritual/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/louisbranch/ritual/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/louisbranch/ritual/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/louisbranch/ritual/compare/v0.1.0...v0.2.0

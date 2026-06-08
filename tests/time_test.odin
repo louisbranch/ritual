@@ -2,7 +2,6 @@ package tests
 
 import "core:testing"
 import "core:time"
-import "core:time/datetime"
 
 import ritual "../src"
 
@@ -46,40 +45,32 @@ test_time_parse :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_is_today :: proc(t: ^testing.T) {
-	// Known weekdays (verified against core:time/datetime):
-	//   2026-06-04 Thu, -05 Fri, -06 Sat, -07 Sun, -08 Mon.
-	thu := datetime.Date{year = 2026, month = 6, day = 4}
-	sat := datetime.Date{year = 2026, month = 6, day = 6}
-	sun := datetime.Date{year = 2026, month = 6, day = 7}
-
+test_local_weekday :: proc(t: ^testing.T) {
+	// One full week of known dates (verified against core:time/datetime).
+	// Each instant is taken at noon UTC so the local date — and therefore the
+	// weekday — is the same as the UTC date for any ordinary zone (UTC-12 ..
+	// UTC+11), keeping the result stable regardless of the test host's timezone.
 	Case :: struct {
-		name:   string,
-		repeat: ritual.Repeat,
-		date:   datetime.Date,
-		want:   bool,
+		name:             string,
+		year, month, day: int,
+		want:             ritual.Weekday,
 	}
 
 	cases := []Case {
-		// weekday present in the repeat set
-		{"matching weekday", {.Thursday}, thu, true},
-		// weekday absent from the repeat set
-		{"non-matching weekday", {.Friday, .Saturday}, thu, false},
-		// every-day ritual matches any date
-		{"daily on weekday", ritual.EVERY_DAY, thu, true},
-		{"daily on weekend", ritual.EVERY_DAY, sat, true},
-		// empty repeat set never matches
-		{"never", {}, thu, false},
-		// weekend-only ritual
-		{"weekend match", {.Saturday, .Sunday}, sun, true},
-		{"weekend miss", {.Saturday, .Sunday}, thu, false},
+		{"sunday", 2026, 6, 7, .Sunday},
+		{"monday", 2026, 6, 8, .Monday},
+		{"tuesday", 2026, 6, 9, .Tuesday},
+		{"wednesday", 2026, 6, 10, .Wednesday},
+		{"thursday", 2026, 6, 11, .Thursday},
+		{"friday", 2026, 6, 12, .Friday},
+		{"saturday", 2026, 6, 13, .Saturday},
 	}
 
 	for c in cases {
-		r := ritual.Ritual {
-			repeat = c.repeat,
-		}
-		got := ritual.is_today(r, c.date)
-		testing.expectf(t, got == c.want, "is_today(%s) = %v, want %v", c.name, got, c.want)
+		instant, ok := time.components_to_time(c.year, c.month, c.day, 12, 0, 0)
+		testing.expectf(t, ok, "components_to_time(%s) failed", c.name)
+
+		got := ritual.local_weekday(instant, context.allocator)
+		testing.expectf(t, got == c.want, "local_weekday(%s) = %v, want %v", c.name, got, c.want)
 	}
 }
