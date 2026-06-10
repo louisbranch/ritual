@@ -24,11 +24,13 @@ command_today :: proc(out, errw: io.Writer) -> Error {
 	dir_path := os.join_path({data_path, APP_NAME}, allocator) or_return
 
 	entries, err := rituals_parse(dir_path, allocator)
-	if err == os.General_Error.Not_Exist {
-		fmt.wprintfln(errw, "directory doesn't exist: %s", dir_path)
-		return .No_Data_Directory
+	if err != nil {
+		if err == os.General_Error.Not_Exist {
+			fmt.wprintfln(errw, "directory doesn't exist: %s", dir_path)
+			return .No_Data_Directory
+		}
+		return err
 	}
-	if err != nil do return err
 
 	if len(entries) == 0 {
 		fmt.wprintfln(errw, "no rituals found in %s", dir_path)

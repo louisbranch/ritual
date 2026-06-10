@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:log"
 import "core:os"
+import "core:strings"
 
 Ritual_Parse :: struct {
 	file:       string,
@@ -50,7 +51,7 @@ Ritual_Raw :: struct {
 	start:       string, // "HH:MM" time-of-day, see time_parse
 	end:         string, // "HH:MM" time-of-day, see time_parse
 	repeat:      json.Value, // "daily" OR ["Mon","Tue",...]
-	steps:       [dynamic]string,
+	steps:       []string,
 }
 
 // rituals_parse loads and decodes every ritual document in the given directory.
@@ -58,7 +59,7 @@ rituals_parse :: proc(
 	path: string,
 	allocator: runtime.Allocator,
 ) -> (
-	[dynamic]Ritual_Parse,
+	[]Ritual_Parse,
 	os.Error,
 ) {
 	files, err := os.read_all_directory_by_path(path, allocator)
@@ -70,14 +71,14 @@ rituals_parse :: proc(
 	entries := make([dynamic]Ritual_Parse, 0, len(files), allocator)
 
 	for f in files {
-		if f.type != os.File_Type.Regular {
+		if f.type != .Regular {
 			log.debugf("not a file %q", f.fullpath)
 			continue
 		}
 		entry := ritual_json_decode(f.fullpath, allocator)
 		append(&entries, entry)
 	}
-	return entries, nil
+	return entries[:], nil
 }
 
 // ritual_json_decode decodes a single ritual JSON file. A read, JSON, or
@@ -101,20 +102,20 @@ ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual
 
 	r: Ritual
 	validation: Ritual_Field_Validation
-	err: Ritual_Field_Error
+	start_err, end_err, repeat_err: Ritual_Field_Error
 
-	if r.start, err = time_parse(raw.start); err != nil {
-		validation[.Start] = err
+	if r.start, start_err = time_parse(raw.start); start_err != nil {
+		validation[.Start] = start_err
 	}
-	if r.end, err = time_parse(raw.end); err != nil {
-		validation[.End] = err
+	if r.end, end_err = time_parse(raw.end); end_err != nil {
+		validation[.End] = end_err
 	}
-	if err == nil && r.end <= r.start {
+	if start_err == nil && end_err == nil && r.end <= r.start {
 		validation[.Start] = .End_Before_Start
 		validation[.End] = .End_Before_Start
 	}
-	if r.repeat, err = repeat_parse(raw.repeat); err != nil {
-		validation[.Repeat] = err
+	if r.repeat, repeat_err = repeat_parse(raw.repeat); repeat_err != nil {
+		validation[.Repeat] = repeat_err
 	}
 
 	// The string fields were already populated into `allocator` by
@@ -165,36 +166,26 @@ repeat_parse :: proc(v: json.Value) -> (rep: Repeat, err: Ritual_Field_Error) {
 // weekday_parse parses a weekday name in 2-letter, 3-letter, or full form
 // (case-insensitive), matching ritual.schema.json's `weekday` definition.
 weekday_parse :: proc(s: string) -> (wd: Weekday, err: Ritual_Field_Error) {
-	max :: len("wednesday")
-
 	if len(s) == 0 do return {}, .Empty
-	if len(s) > max do return {}, .Invalid_Format
 
-	// ASCII-lowercase into a stack buffer: the result is pure scratch for the
-	// match below, so there's no reason to touch any allocator.
-	buf: [max]byte
-	for i in 0 ..< len(s) {
-		c := s[i]
-		if 'A' <= c && c <= 'Z' do c += 'a' - 'A'
-		buf[i] = c
+	names :: [Weekday]string {
+		.Sunday    = "sunday",
+		.Monday    = "monday",
+		.Tuesday   = "tuesday",
+		.Wednesday = "wednesday",
+		.Thursday  = "thursday",
+		.Friday    = "friday",
+		.Saturday  = "saturday",
 	}
 
-	switch string(buf[:len(s)]) {
-	case "su", "sun", "sunday":
-		return .Sunday, .None
-	case "mo", "mon", "monday":
-		return .Monday, .None
-	case "tu", "tue", "tuesday":
-		return .Tuesday, .None
-	case "we", "wed", "wednesday":
-		return .Wednesday, .None
-	case "th", "thu", "thursday":
-		return .Thursday, .None
-	case "fr", "fri", "friday":
-		return .Friday, .None
-	case "sa", "sat", "saturday":
-		return .Saturday, .None
-	case:
-		return {}, .Invalid_Format
+	// The accepted forms are all prefixes of the full name; every name is at
+	// least 6 letters, so the 2- and 3-letter slices are always in range.
+	for name, day in names {
+		if len(s) == 2 || len(s) == 3 || len(s) == len(name) {
+			if strings.equal_fold(s, name[:len(s)]) {
+				return day, .None
+			}
+		}
 	}
+	return {}, .Invalid_Format
 }

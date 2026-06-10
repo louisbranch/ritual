@@ -1,7 +1,7 @@
 package ritual
 
 import "base:runtime"
-import "core:strings"
+import "core:fmt"
 import "core:time"
 
 Weekday :: time.Weekday
@@ -19,21 +19,19 @@ Ritual :: struct {
 	start:       Time_Of_Day, // time of day, see time_parse
 	end:         Time_Of_Day, // time of day, see time_parse
 	repeat:      Repeat,
-	steps:       [dynamic]string,
+	steps:       []string,
 }
 
 // ritual_to_string renders the one-line display form shown to the user —
 // "[HH:MM - HH:MM] name: description". It is not a full dump of the struct:
 // repeat and steps are omitted.
 ritual_to_string :: proc(r: Ritual, allocator: runtime.Allocator) -> string {
-	hm :: 5 // HH:MM only
-	start_buf, end_buf: [time.MIN_HMS_LEN]byte
+	start_h, start_m, _ := time.clock_from_duration(time.Duration(r.start))
+	end_h, end_m, _ := time.clock_from_duration(time.Duration(r.end))
 
-	start := time.duration_to_string_hms(time.Duration(r.start), start_buf[:])
-	end := time.duration_to_string_hms(time.Duration(r.end), end_buf[:])
-
-	return strings.concatenate(
-		{"[", start[:hm], " - ", end[:hm], "] ", r.name, ": ", r.description},
-		allocator,
+	return fmt.aprintf(
+		"[%02d:%02d - %02d:%02d] %s: %s",
+		start_h, start_m, end_h, end_m, r.name, r.description,
+		allocator = allocator,
 	)
 }

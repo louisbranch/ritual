@@ -1,7 +1,6 @@
 package ritual
 
 import "base:runtime"
-import "core:strconv"
 import "core:time"
 import "core:time/datetime"
 import "core:time/timezone"
@@ -12,11 +11,22 @@ import "core:time/timezone"
 // Requires exactly two digits for each field. Rejects negatives, missing
 // fields, and out-of-range values (hour > 23 or minute > 59).
 time_parse :: proc(s: string) -> (Time_Of_Day, Ritual_Field_Error) {
+	// Digits are scanned by hand, like core's rfc3339 parser: strconv.parse_uint
+	// also accepts '+', '_' separators, and base prefixes, none of which are
+	// valid in a "HH:MM" field.
+	two_digits :: proc(s: string) -> (n: int, ok: bool) {
+		for c in s {
+			('0' <= c && c <= '9') or_return
+			n = n * 10 + int(c - '0')
+		}
+		return n, true
+	}
+
 	if len(s) != 5 || s[2] != ':' do return 0, .Invalid_Format
 
-	hour, hour_ok := strconv.parse_uint(s[0:2])
+	hour, hour_ok := two_digits(s[0:2])
 	if !hour_ok do return 0, .Invalid_Number
-	minute, minute_ok := strconv.parse_uint(s[3:5])
+	minute, minute_ok := two_digits(s[3:5])
 	if !minute_ok do return 0, .Invalid_Number
 
 	if hour > 23 || minute > 59 do return 0, .Out_Of_Range

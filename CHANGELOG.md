@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-10
+
+### Fixed
+
+- `time_parse` now rejects `+` signs and `_` digit separators in `HH:MM`
+  fields, which `strconv.parse_uint` silently accepted.
+- A start-time parse error no longer leaks into the end-before-start check:
+  each field validation now uses its own error, so an invalid start with a
+  `00:00` end reports the parse error instead of a spurious range error.
+
+### Changed
+
+- `weekday_parse` matches names by case-folded prefix against a weekday table
+  instead of a hand-lowered switch.
+- Ritual steps and parse results are returned as slices rather than dynamic
+  arrays.
+- `ritual_to_string` formats times with `fmt.aprintf` instead of trimming
+  `duration_to_string_hms` output.
+
 ## [0.3.0] - 2026-06-08
 
 ### Added

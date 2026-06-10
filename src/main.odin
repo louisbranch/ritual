@@ -7,7 +7,7 @@ import "core:log"
 import "core:os"
 
 APP_NAME :: "ritual"
-APP_VERSION :: "0.3.0"
+APP_VERSION :: "0.3.1"
 
 HELP :: `Usage: %[0]s [COMMAND]
 

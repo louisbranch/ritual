@@ -29,6 +29,8 @@ test_time_parse :: proc(t: ^testing.T) {
 		{"ab:cd", 0, .Invalid_Number},
 		{"06:cd", 0, .Invalid_Number},
 		{"-6:30", 0, .Invalid_Number}, // sign in hours field
+		{"+6:30", 0, .Invalid_Number}, // sign in hours field
+		{"1_:30", 0, .Invalid_Number}, // digit separator
 
 		// out of range
 		{"24:00", 0, .Out_Of_Range},
