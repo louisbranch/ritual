@@ -10,28 +10,26 @@ import "core:time/timezone"
 //
 // Requires exactly two digits for each field. Rejects negatives, missing
 // fields, and out-of-range values (hour > 23 or minute > 59).
-time_parse :: proc(s: string) -> (Time_Of_Day, Ritual_Field_Error) {
+time_parse :: proc(s: string) -> (d: Time_Of_Day, err: Ritual_Field_Error) {
 	// Digits are scanned by hand, like core's rfc3339 parser: strconv.parse_uint
 	// also accepts '+', '_' separators, and base prefixes, none of which are
 	// valid in a "HH:MM" field.
-	two_digits :: proc(s: string) -> (n: int, ok: bool) {
+	two_digits :: proc(s: string) -> (n: int, err: Ritual_Field_Error) {
 		for c in s {
-			('0' <= c && c <= '9') or_return
+			if c < '0' || c > '9' do return 0, .Invalid_Number
 			n = n * 10 + int(c - '0')
 		}
-		return n, true
+		return n, .None
 	}
 
 	if len(s) != 5 || s[2] != ':' do return 0, .Invalid_Format
 
-	hour, hour_ok := two_digits(s[0:2])
-	if !hour_ok do return 0, .Invalid_Number
-	minute, minute_ok := two_digits(s[3:5])
-	if !minute_ok do return 0, .Invalid_Number
+	hour := two_digits(s[0:2]) or_return
+	minute := two_digits(s[3:5]) or_return
 
 	if hour > 23 || minute > 59 do return 0, .Out_Of_Range
 
-	d := Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute)
+	d = Time_Of_Day(time.Duration(hour) * time.Hour + time.Duration(minute) * time.Minute)
 
 	return d, .None
 }
