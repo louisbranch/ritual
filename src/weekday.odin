@@ -4,21 +4,18 @@ import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:log"
-import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
-import "core:time"
 
-// command_today loads every ritual document under the user data dir, reports
+// command_weekday loads every ritual document under the user data dir, reports
 // any per-file errors, and prints the rituals scheduled for today, sorted by
 // start time.
-command_today :: proc(out, errw: io.Writer) -> Error {
-	arena: virtual.Arena
-	virtual.arena_init_growing(&arena) or_return
-	defer virtual.arena_destroy(&arena)
-
-	allocator := virtual.arena_allocator(&arena)
+command_weekday :: proc(
+	out, errw: io.Writer,
+	allocator: runtime.Allocator,
+	weekday: Weekday,
+) -> Error {
 
 	data_path := os.user_data_dir(allocator) or_return
 	dir_path := os.join_path({data_path, APP_NAME}, allocator) or_return
@@ -38,8 +35,6 @@ command_today :: proc(out, errw: io.Writer) -> Error {
 	}
 
 	rituals := make([dynamic]Ritual, 0, len(entries), allocator)
-
-	weekday := local_weekday(time.now(), allocator)
 
 	for e in entries {
 		switch e.error {

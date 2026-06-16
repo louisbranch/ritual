@@ -4,12 +4,14 @@ import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:log"
+import "core:mem/virtual"
 import "core:os"
+import "core:time"
 
 APP_NAME :: "ritual"
-APP_VERSION :: "0.3.1"
+APP_VERSION :: "0.4.0"
 
-HELP :: `Usage: %[0]s [COMMAND]
+HELP :: `Usage: %[0]s [COMMAND | WEEKDAY]
 
 Track simple recurring rituals and list the ones scheduled for today.
 
@@ -17,6 +19,9 @@ Commands:
   today      List rituals for the current date (default)
   version    Print version information
   help       Show this help
+
+Pass a weekday name to list that day's rituals instead of today's. Accepts
+2-letter, 3-letter, or full names, case-insensitive (e.g. mo, mon, Monday).
 
 With no command, %[0]s runs 'today'.`
 
@@ -44,21 +49,40 @@ main :: proc() {
 
 	switch cmd {
 	case "", "today":
-		switch err in command_today(out, errw) {
-		case Command_Error:
-			log.debug(err)
-			os.exit(1)
-		case runtime.Allocator_Error, os.Error:
-			log.fatal(err)
-			os.exit(1)
-		}
+		run_weekday(out, errw)
 	case "version":
 		fmt.wprintfln(out, "%s %s", APP_NAME, APP_VERSION)
 	case "help":
 		fmt.wprintfln(out, HELP, APP_NAME)
 	case:
-		fmt.wprintfln(errw, "%s: unknown command '%s'", APP_NAME, cmd)
-		fmt.wprintfln(errw, "Try '%s help' for more information.", APP_NAME)
+		weekday, err := weekday_parse(cmd)
+		if err != nil {
+			fmt.wprintfln(errw, "%s: unknown command '%s'", APP_NAME, cmd)
+			fmt.wprintfln(errw, "Try '%s help' for more information.", APP_NAME)
+			os.exit(1)
+		}
+
+		run_weekday(out, errw, weekday)
+	}
+}
+
+run_weekday :: proc(out, errw: io.Writer, day: Maybe(Weekday) = nil) -> Error {
+	arena: virtual.Arena
+	virtual.arena_init_growing(&arena) or_return
+	defer virtual.arena_destroy(&arena)
+
+	allocator := virtual.arena_allocator(&arena)
+
+	weekday := day.? or_else local_weekday(time.now(), allocator)
+
+	switch err in command_weekday(out, errw, allocator, weekday) {
+	case Command_Error:
+		log.debug(err)
+		os.exit(1)
+	case runtime.Allocator_Error, os.Error:
+		log.fatal(err)
 		os.exit(1)
 	}
+
+	return nil
 }

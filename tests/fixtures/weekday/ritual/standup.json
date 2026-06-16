@@ -1,0 +1,8 @@
+{
+  "name": "Monday Standup",
+  "description": "Daily sync",
+  "start": "09:00",
+  "end": "09:15",
+  "repeat": ["Mon"],
+  "steps": []
+}

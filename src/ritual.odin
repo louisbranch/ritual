@@ -29,9 +29,26 @@ ritual_to_string :: proc(r: Ritual, allocator: runtime.Allocator) -> string {
 	start_h, start_m, _ := time.clock_from_duration(time.Duration(r.start))
 	end_h, end_m, _ := time.clock_from_duration(time.Duration(r.end))
 
+	if r.description == "" {
+		return fmt.aprintf(
+			"[%02d:%02d - %02d:%02d] %s",
+			start_h,
+			start_m,
+			end_h,
+			end_m,
+			r.name,
+			allocator = allocator,
+		)
+	}
+
 	return fmt.aprintf(
 		"[%02d:%02d - %02d:%02d] %s: %s",
-		start_h, start_m, end_h, end_m, r.name, r.description,
+		start_h,
+		start_m,
+		end_h,
+		end_m,
+		r.name,
+		r.description,
 		allocator = allocator,
 	)
 }

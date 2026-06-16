@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-16
+
+### Added
+
+- A weekday name can be passed as an argument to list that day's rituals instead
+  of today's, accepting 2-letter, 3-letter, or full names, case-insensitive
+  (e.g. `mo`, `mon`, `Monday`).
+- Ritual descriptions are now optional; a ritual without one is listed without
+  the trailing `: description` rather than being rejected as an empty field.
+
+### Changed
+
+- `command_today` is renamed to `command_weekday` and now takes the target
+  weekday and allocator from its caller; `run_weekday` owns the per-run arena and
+  resolves today's weekday, so the same path serves both the default and an
+  explicit weekday.
+- `two_digits` in `time_parse` returns a field error instead of a bool.
+
 ## [0.3.1] - 2026-06-10
 
 ### Fixed
@@ -86,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split memory into separate scratch and data arenas.
 - Release build target.
 
+[0.4.0]: https://github.com/louisbranch/ritual/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/louisbranch/ritual/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/louisbranch/ritual/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/louisbranch/ritual/compare/v0.2.1...v0.2.2

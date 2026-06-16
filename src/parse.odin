@@ -47,7 +47,7 @@ Ritual_Field_Error :: enum {
 // oneOf are converted into their real types by unmarshal_ritual.
 Ritual_Raw :: struct {
 	name:        string,
-	description: string,
+	description: Maybe(string),
 	start:       string, // "HH:MM" time-of-day, see time_parse
 	end:         string, // "HH:MM" time-of-day, see time_parse
 	repeat:      json.Value, // "daily" OR ["Mon","Tue",...]
@@ -55,13 +55,7 @@ Ritual_Raw :: struct {
 }
 
 // rituals_parse loads and decodes every ritual document in the given directory.
-rituals_parse :: proc(
-	path: string,
-	allocator: runtime.Allocator,
-) -> (
-	[]Ritual_Parse,
-	os.Error,
-) {
+rituals_parse :: proc(path: string, allocator: runtime.Allocator) -> ([]Ritual_Parse, os.Error) {
 	files, err := os.read_all_directory_by_path(path, allocator)
 	if err != nil {
 		log.debugf("failed to read dir %s: %v", path, err)
@@ -125,9 +119,11 @@ ritual_json_decode :: proc(path: string, allocator: runtime.Allocator) -> Ritual
 		validation[.Name] = .Empty
 	}
 
-	r.description = raw.description
-	if r.description == "" {
-		validation[.Description] = .Empty
+	if raw.description != nil {
+		r.description = raw.description.(string)
+		if r.description == "" {
+			validation[.Description] = .Empty
+		}
 	}
 
 	r.steps = raw.steps

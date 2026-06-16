@@ -15,9 +15,9 @@ test_ritual_to_string :: proc(t: ^testing.T) {
 		want: string,
 	}
 
-	cases := []Case{
+	cases := []Case {
 		{
-			ritual.Ritual{
+			ritual.Ritual {
 				name = "Morning",
 				description = "Wake up routine",
 				start = ritual.Time_Of_Day(6 * time.Hour + 30 * time.Minute),
@@ -28,7 +28,7 @@ test_ritual_to_string :: proc(t: ^testing.T) {
 		},
 		// Midnight start renders as 00:00, not blank or 24:00.
 		{
-			ritual.Ritual{
+			ritual.Ritual {
 				name = "Night",
 				description = "wind down",
 				start = ritual.Time_Of_Day(0),
@@ -38,22 +38,16 @@ test_ritual_to_string :: proc(t: ^testing.T) {
 		},
 		// Empty name and description still produce a well-formed line.
 		{
-			ritual.Ritual{
+			ritual.Ritual {
 				start = ritual.Time_Of_Day(8 * time.Hour),
 				end = ritual.Time_Of_Day(8 * time.Hour + 30 * time.Minute),
 			},
-			"[08:00 - 08:30] : ",
+			"[08:00 - 08:30] ",
 		},
 	}
 
 	for c in cases {
 		got := ritual.ritual_to_string(c.r, context.temp_allocator)
-		testing.expectf(
-			t,
-			got == c.want,
-			"ritual_to_string() = %q, want %q",
-			got,
-			c.want,
-		)
+		testing.expectf(t, got == c.want, "ritual_to_string() = %q, want %q", got, c.want)
 	}
 }
