@@ -3,10 +3,10 @@
   "$id": "https://github.com/louisbranch/ritual/ritual.schema.json",
   "title": "Ritual",
   "type": "object",
-  "required": ["name", "description", "start", "end", "repeat", "steps"],
+  "required": ["name", "start", "end", "repeat"],
   "properties": {
-    "name": { "type": "string" },
-    "description": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
     "start": { "$ref": "#/$defs/time" },
     "end": { "$ref": "#/$defs/time" },
     "repeat": {

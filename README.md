@@ -1,26 +1,27 @@
 # ritual
 
-A tiny command-line tool that tracks simple recurring rituals and prints the
-ones scheduled for **today**, sorted by start time.
+A tiny command-line tool that tracks simple recurring rituals and lists the
+ones scheduled for a given day — today by default — sorted by start time.
 
 > This is a learning project for exploring [Odin](https://odin-lang.org) — its
 > type system, manual memory management with arenas, and `core:` library. It is
 > intentionally small and favours clarity over features.
 
 ```sh
-$ make run
+$ ritual
 [06:30 - 06:45] Mindfulness: Sit down meditation.
 [21:00 - 21:25] Nightly Yoga: Wind-down activity before bed.
 ```
 
 ## What it does
 
-A *ritual* is a recurring activity with a name, a description, a start time, an
-end time, a repeat rule, and an optional list of steps. Each ritual lives in
-its own JSON file. When you run the `today` command the tool:
+A *ritual* is a recurring activity with a name, an optional description, a start
+time, an end time, a repeat rule, and an optional list of steps. Each ritual
+lives in its own JSON file. When you run it, the tool:
 
 1. Reads all ritual files from the data directory.
-2. Keeps only the rituals that repeat today (a specific weekday, or daily).
+2. Keeps only the rituals that repeat on the target day — today by default, or
+   a weekday you name (a specific weekday, or daily).
 3. Sorts them by start time and prints a one-line summary of each.
 
 ## Commands
@@ -33,10 +34,19 @@ ritual help       # show usage and available commands
 
 With no command, `ritual` runs `today`.
 
+You can also pass a weekday name to list that day's rituals instead of today's.
+Names accept 2-letter, 3-letter, and full forms, case-insensitively:
+
+```sh
+ritual mo         # list Monday's rituals
+ritual mon
+ritual Monday
+```
+
 ## Ritual format
 
-Each ritual is a single JSON file validated against
-[`ritual.schema.json`](ritual.schema.json):
+Each ritual is a single JSON file. Its shape is described by
+[`ritual.schema.json`](ritual.schema.json), a reference you can validate against:
 
 ```json
 {
@@ -49,6 +59,8 @@ Each ritual is a single JSON file validated against
 }
 ```
 
+- **`description`** — an optional one-line summary. A ritual without one is
+  listed by name alone, without a trailing `: description`.
 - **`start`** / **`end`** — wall-clock times of day as `"HH:MM"` in 24-hour
   form, such as `"06:30"` or `"21:00"`. `end` must be after `start`.
 - **`repeat`** — either the literal `"daily"`, or an array of weekdays. Weekday
@@ -66,26 +78,6 @@ The tool reads files from the user data directory — on Linux that is
 ```sh
 mkdir -p ~/.local/share/ritual
 cp my-ritual.json ~/.local/share/ritual/
-```
-
-## Running locally
-
-You'll need the [Odin compiler](https://odin-lang.org/docs/install/).
-
-```sh
-make run         # build and print today's rituals
-make test        # run the test suite (odin test tests)
-make build       # build a debug binary at ./build/ritual
-```
-
-The `make` targets wrap `odin run`/`odin build`/`odin test`; see the
-[`Makefile`](Makefile) for the exact invocations.
-
-### Building an optimized release
-
-```sh
-make release     # odin build with -o:speed, asserts and bounds checks disabled
-./build/ritual
 ```
 
 ## License
